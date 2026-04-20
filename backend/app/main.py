@@ -86,12 +86,15 @@ async def upload_image(file: UploadFile = File(...)):
         _, _, denoised = preprocess(tmp_path)
         extraction_data = extract_all(denoised, category)
 
+        extraction_serialized = _serialize_extraction(extraction_data)
+        extraction_serialized["image_dimensions"] = [w, h]
+
         return {
             "category": category,
             "confidence": classification.get("confidence", 0.0),
             "rationale": classification.get("rationale", ""),
             "architectural_suggestions": classification.get("architectural_suggestions", []),
-            "extraction_data": _serialize_extraction(extraction_data),
+            "extraction_data": extraction_serialized,
             "image_dimensions": [w, h],
         }
     finally:
@@ -149,10 +152,12 @@ async def trace_image(file: UploadFile = File(...), mode: str = Form(default="")
             for i, cat in enumerate(ALL_CATEGORIES):
                 try:
                     data = await cv_tasks[cat]
-                    traces[cat] = _serialize_extraction(data)
+                    serialized = _serialize_extraction(data)
+                    serialized["image_dimensions"] = [w, h]
+                    traces[cat] = serialized
                 except Exception as e:
                     logger.warning("Extraction failed for %s: %s", cat, str(e))
-                    traces[cat] = {}
+                    traces[cat] = {"image_dimensions": [w, h]}
                 pct = 10 + int((i + 1) / len(ALL_CATEGORIES) * 85)
                 yield _sse({"step": "extracting", "percent": pct, "label": f"Traced: {cat} ({i+1}/6)"})
 
@@ -279,6 +284,7 @@ async def generate(file: UploadFile = File(...), brief_json: str = Form(default=
                     extraction_data = preliminary_data
 
                 extraction_data_serialized = _serialize_extraction(extraction_data)
+                extraction_data_serialized["image_dimensions"] = [w, h]
 
             yield _sse({"step": "generating", "percent": 70, "label": "Generating 3D variations..."})
 

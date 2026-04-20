@@ -50,9 +50,12 @@ def _add_voronoi_columns(model, layer_idx, ox, oy, fw, fd, z, fh, extraction):
     if len(seed_points) < 3:
         _add_grid_columns(model, layer_idx, ox, oy, fw, fd, z, fh)
         return
-    pts = np.array(seed_points, dtype=float)
-    pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * fw + ox
-    pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * fd + oy
+    img_dims = extraction.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+    pts = np.array(seed_points, dtype=float)[:, :2]
+    pts[:, 0] = pts[:, 0] / img_w * fw + ox
+    pts[:, 1] = pts[:, 1] / img_h * fd + oy
     for pt in pts:
         add_solid_column(model, layer_idx, float(pt[0]), float(pt[1]), z, z + fh)
 
@@ -100,56 +103,84 @@ def _add_structural_beams(model, layer_idx, column_positions, z_top, beam_depth=
 
 
 def _get_pattern_column_positions(extraction, category, ox, oy, fw, fd, target_count):
-    """Extract column positions from pattern data, normalized to floor bounds."""
+    """Extract column positions from pattern data, normalized to floor bounds.
+
+    Uses image_dimensions (set by main.py) so spatial relationships in the
+    trace are preserved, not stretched per-feature. Returns all pattern points
+    up to max_columns — caller can blend with a grid if desired.
+    """
+    img_dims = extraction.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+    max_columns = max(target_count * 3, 40)
     rng = np.random.default_rng(42)
 
+    def _map_xy(points):
+        pts = np.array(points, dtype=float)
+        if pts.ndim != 2 or pts.shape[1] < 2:
+            return []
+        pts = pts[:, :2]
+        pts[:, 0] = pts[:, 0] / img_w * fw + ox
+        pts[:, 1] = pts[:, 1] / img_h * fd + oy
+        if len(pts) > max_columns:
+            indices = rng.choice(len(pts), max_columns, replace=False)
+            pts = pts[indices]
+        return pts.tolist()
+
     if category == "cellular":
-        seed_points = extraction.get("seed_points", [])
-        if len(seed_points) >= 3:
-            pts = np.array(seed_points, dtype=float)
-            pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * fw + ox
-            pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * fd + oy
-            if len(pts) > target_count:
-                indices = rng.choice(len(pts), target_count, replace=False)
-                pts = pts[indices]
-            return pts.tolist()
+        hier = extraction.get("seed_points_hierarchical")
+        if hier and isinstance(hier, list) and hier and isinstance(hier[0], dict):
+            centers = [s["center"] for s in hier if "center" in s]
+            if len(centers) >= 3:
+                return _map_xy(centers)
+        flat = extraction.get("seed_points", [])
+        if len(flat) >= 3:
+            return _map_xy(flat)
 
     elif category == "branching":
+        # branch_points are stored as (y, x) — swap to (x, y) first.
         branch_points = extraction.get("branch_points", [])
         if len(branch_points) >= 3:
-            pts = np.array(branch_points, dtype=float)
-            pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * fd + oy
-            pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * fw + ox
-            pts = pts[:, ::-1]
-            if len(pts) > target_count:
-                indices = rng.choice(len(pts), target_count, replace=False)
-                pts = pts[indices]
-            return pts.tolist()
+            swapped = [(b[1], b[0]) for b in branch_points if len(b) >= 2]
+            return _map_xy(swapped)
 
     elif category == "porous":
         holes = extraction.get("holes", [])
-        if len(holes) >= 3:
-            positions = []
-            max_cx = max(h["center"][0] for h in holes) or 1
-            max_cy = max(h["center"][1] for h in holes) or 1
-            for h in holes[:target_count]:
-                px = h["center"][0] / max_cx * fw + ox
-                py = h["center"][1] / max_cy * fd + oy
-                positions.append((px, py))
-            return positions
+        centers = [h["center"] for h in holes if "center" in h]
+        if len(centers) >= 3:
+            return _map_xy(centers)
 
     elif category == "lattice":
         intersections = extraction.get("intersections", [])
         if len(intersections) >= 3:
-            pts = np.array(intersections[:target_count * 2], dtype=float)
-            x_max = max(pts[:, 0].max(), 1)
-            y_max = max(pts[:, 1].max(), 1)
-            pts[:, 0] = pts[:, 0] / x_max * fw + ox
-            pts[:, 1] = pts[:, 1] / y_max * fd + oy
-            if len(pts) > target_count:
-                indices = rng.choice(len(pts), target_count, replace=False)
-                pts = pts[indices]
-            return pts.tolist()
+            return _map_xy(intersections)
+
+    elif category == "shell":
+        # control_points is a 2D grid of (x, y, height, curvature, hier) rows.
+        cps = extraction.get("control_points", [])
+        flat = []
+        for row in cps:
+            for p in row:
+                if len(p) >= 4:
+                    flat.append((p[0], p[1], p[3]))
+        if len(flat) >= 3:
+            # Prefer high-curvature points — those are the ridges/valleys.
+            flat.sort(key=lambda t: -t[2])
+            return _map_xy([(x, y) for x, y, _ in flat[:max_columns]])
+
+    elif category == "spiral":
+        # Synthesize arm columns radiating from the spiral center.
+        center = extraction.get("center")
+        arm_count = max(int(extraction.get("arm_count", 3)), 2)
+        max_r = extraction.get("max_radius") or (min(img_w, img_h) / 3)
+        if center:
+            cx, cy = float(center[0]), float(center[1])
+            synthesized = [(cx, cy)]
+            for r in [max_r * 0.25, max_r * 0.55, max_r * 0.9]:
+                for k in range(arm_count):
+                    angle = 2 * math.pi * k / arm_count + math.log(max(r / max_r, 0.01)) * 1.2
+                    synthesized.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+            return _map_xy(synthesized)
 
     return []
 
@@ -203,11 +234,11 @@ def generate_structural_variation(brief: dict, extraction: dict, category: str,
 
     column_spacing = 6.0
     beam_depth = 0.4
-    pattern_influence = 0.7
+    pattern_influence = 1.0
     if custom_params:
         column_spacing = custom_params.get("column_spacing", 6.0)
         beam_depth = custom_params.get("beam_depth", 0.4)
-        pattern_influence = custom_params.get("pattern_influence", 0.7)
+        pattern_influence = custom_params.get("pattern_influence", 1.0)
 
     floors = brief["floors"]
     w, d = brief["bounds"]
@@ -231,22 +262,30 @@ def generate_structural_variation(brief: dict, extraction: dict, category: str,
             extraction, category, ox, oy, fw, fd_fl, len(grid_positions)
         )
 
+        # At full pattern_influence, use pattern points directly.
+        # At zero, use the grid. In between, blend the overlap and keep
+        # extra pattern points so denser patterns aren't trimmed away.
         if pattern_positions and len(pattern_positions) >= 2:
-            n = min(len(grid_positions), len(pattern_positions))
-            grid_arr = np.array(grid_positions[:n])
-            pat_arr = np.array(pattern_positions[:n])
-            final_positions = (
-                grid_arr * (1 - pattern_influence) + pat_arr * pattern_influence
-            ).tolist()
+            if pattern_influence >= 0.999:
+                final_positions = [tuple(p) for p in pattern_positions]
+            else:
+                n = min(len(grid_positions), len(pattern_positions))
+                grid_arr = np.array(grid_positions[:n])
+                pat_arr = np.array(pattern_positions[:n])
+                blended = (
+                    grid_arr * (1 - pattern_influence) + pat_arr * pattern_influence
+                ).tolist()
+                extras = pattern_positions[n:] if pattern_influence > 0.5 else []
+                final_positions = [tuple(p) for p in blended] + [tuple(p) for p in extras]
         else:
             final_positions = grid_positions
 
         for pos in final_positions:
             add_solid_column(model, col_idx, float(pos[0]), float(pos[1]), z, z + fh)
 
+        # No max_span — Delaunay gives us the pattern's natural connectivity.
         _add_structural_beams(model, beam_idx, final_positions, z + fh,
-                               beam_depth=beam_depth,
-                               max_span=column_spacing * 2)
+                               beam_depth=beam_depth)
 
     return model
 

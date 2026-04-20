@@ -71,6 +71,10 @@ def _apply_voronoi_to_wall(model, layer_idx, wall, seed_points, cell_count, dept
         do_subdivide = False
         t = 0.0
 
+    img_dims = (evo or {}).get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+
     # Use a seed based on floor position so each floor gets a unique but deterministic pattern
     floor_seed = 42 + int(t * 1000)
     rng = np.random.default_rng(floor_seed)
@@ -95,15 +99,15 @@ def _apply_voronoi_to_wall(model, layer_idx, wall, seed_points, cell_count, dept
             filtered = filtered[:lod_cap]
         if len(filtered) >= 4:
             pts = np.array(filtered, dtype=float)
-            pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * ww
-            pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * wh
+            pts[:, 0] = pts[:, 0] / img_w * ww
+            pts[:, 1] = pts[:, 1] / img_h * wh
         else:
             pts = np.column_stack([rng.uniform(0, ww, max(cell_count, 12)),
                                     rng.uniform(0, wh, max(cell_count, 12))])
     elif seed_points and len(seed_points) >= 4:
         pts = np.array(seed_points[:lod_cap], dtype=float)
-        pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * ww
-        pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * wh
+        pts[:, 0] = pts[:, 0] / img_w * ww
+        pts[:, 1] = pts[:, 1] / img_h * wh
         if len(pts) < cell_count:
             extra = cell_count - len(pts)
             new_pts = np.column_stack([rng.uniform(0, ww, extra), rng.uniform(0, wh, extra)])
@@ -235,6 +239,10 @@ def _apply_lines_to_wall(model, layer_idx, wall, lines_data, depth=0.05, evo=Non
         angles = [0.0, math.pi / 2]
         spacing_mult = 1.0
 
+    img_dims = (evo or {}).get("image_dimensions") or lines_data.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+
     rng = np.random.default_rng(42 + int(t * 1000))
 
     # LOD cap based on wall size
@@ -255,18 +263,14 @@ def _apply_lines_to_wall(model, layer_idx, wall, lines_data, depth=0.05, evo=Non
         if not all_coords:
             return
 
-        flat = np.array(all_coords, dtype=float)
-        x_max = max(np.concatenate([flat[:, 0], flat[:, 2]]).max(), 1)
-        y_max = max(np.concatenate([flat[:, 1], flat[:, 3]]).max(), 1)
-
         for hl in hier_lines:
             if hl["hierarchy"] > max_hierarchy:
                 continue
             coords = hl["coords"]
-            u1 = coords[0] / x_max * ww
-            v1 = coords[1] / y_max * wh
-            u2 = coords[2] / x_max * ww
-            v2 = coords[3] / y_max * wh
+            u1 = coords[0] / img_w * ww
+            v1 = coords[1] / img_h * wh
+            u2 = coords[2] / img_w * ww
+            v2 = coords[3] / img_h * wh
 
             # Apply rotation evolution
             if evo and t > 0:
@@ -292,15 +296,11 @@ def _apply_lines_to_wall(model, layer_idx, wall, lines_data, depth=0.05, evo=Non
             coords_list.append(coords)
 
         if coords_list:
-            flat = np.array(coords_list, dtype=float)
-            x_max = max(np.concatenate([flat[:, 0], flat[:, 2]]).max(), 1)
-            y_max = max(np.concatenate([flat[:, 1], flat[:, 3]]).max(), 1)
-
             for coords in coords_list:
-                u1 = coords[0] / x_max * ww
-                v1 = coords[1] / y_max * wh
-                u2 = coords[2] / x_max * ww
-                v2 = coords[3] / y_max * wh
+                u1 = coords[0] / img_w * ww
+                v1 = coords[1] / img_h * wh
+                u2 = coords[2] / img_w * ww
+                v2 = coords[3] / img_h * wh
                 u1 = max(0, min(u1, ww))
                 v1 = max(0, min(v1, wh))
                 u2 = max(0, min(u2, ww))
@@ -411,12 +411,14 @@ def _apply_circles_to_wall(model, layer_idx, wall, holes_data, depth=0.06, evo=N
     lod_cap = _lod_cap_for_wall(ww, wh, MAX_HOLES)
     holes = holes_data.get("holes", [])[:lod_cap]
 
+    img_dims = (evo or {}).get("image_dimensions") or holes_data.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+
     # Determine max hierarchy to show based on floor position
     max_hierarchy = 0 if t < 0.25 else (1 if t < 0.6 else 2)
 
     if holes:
-        max_cx = max(h["center"][0] for h in holes) or 1
-        max_cy = max(h["center"][1] for h in holes) or 1
         max_r = max(h["radius"] for h in holes) or 1
 
         for hole in holes:
@@ -425,8 +427,8 @@ def _apply_circles_to_wall(model, layer_idx, wall, holes_data, depth=0.06, evo=N
             if hier > max_hierarchy:
                 continue
 
-            cu = hole["center"][0] / max_cx * ww * 0.9 + ww * 0.05
-            cv_val = hole["center"][1] / max_cy * wh * 0.9 + wh * 0.05
+            cu = hole["center"][0] / img_w * ww
+            cv_val = hole["center"][1] / img_h * wh
             r = hole["radius"] / max_r * min(ww, wh) * 0.04 * hole_scale
             r = max(r, 0.03)
 
@@ -450,8 +452,8 @@ def _apply_circles_to_wall(model, layer_idx, wall, holes_data, depth=0.06, evo=N
                 pl = rhino3dm.Polyline(0)
                 for bpt in boundary:
                     # Offset from center, scale to wall-space radius
-                    bu = cu + (bpt[0] - b_cx) / max_cx * ww * 0.9
-                    bv = cv_val + (bpt[1] - b_cy) / max_cy * wh * 0.9
+                    bu = cu + (bpt[0] - b_cx) / img_w * ww
+                    bv = cv_val + (bpt[1] - b_cy) / img_h * wh
                     bu = max(0, min(bu, ww))
                     bv = max(0, min(bv, wh))
                     bx = o[0] + u[0] * bu + v[0] * bv + n[0] * local_depth
@@ -460,8 +462,8 @@ def _apply_circles_to_wall(model, layer_idx, wall, holes_data, depth=0.06, evo=N
                     pl.Add(bx, by, bz)
                 # Close the polygon
                 first = boundary[0]
-                fu = cu + (first[0] - b_cx) / max_cx * ww * 0.9
-                fv = cv_val + (first[1] - b_cy) / max_cy * wh * 0.9
+                fu = cu + (first[0] - b_cx) / img_w * ww
+                fv = cv_val + (first[1] - b_cy) / img_h * wh
                 fu = max(0, min(fu, ww))
                 fv = max(0, min(fv, wh))
                 fx = o[0] + u[0] * fu + v[0] * fv + n[0] * local_depth
@@ -533,20 +535,17 @@ def _apply_branching_to_wall(model, layer_idx, wall, extraction, depth=0.08, evo
     branch_points = extraction.get("branch_points", [])
     endpoints = extraction.get("endpoints", [])
 
+    img_dims = (evo or {}).get("image_dimensions") or extraction.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+
     if paths and len(paths) >= 2:
         # ── Use actual extracted skeleton paths ──
-        # Find image bounds from path data to normalize coordinates
-        all_pts = []
-        for p in paths:
-            pts = p["points"] if isinstance(p, dict) else p
-            all_pts.extend(pts)
-        if not all_pts:
-            return
-        all_arr = np.array(all_pts, dtype=float)
-        r_min, c_min = all_arr.min(axis=0)
-        r_max, c_max = all_arr.max(axis=0)
-        r_range = max(r_max - r_min, 1)
-        c_range = max(c_max - c_min, 1)
+        # Normalize by the source image, not by the path bounding box — this
+        # preserves the pattern's original spatial distribution on the wall.
+        r_min, c_min = 0.0, 0.0
+        r_range = img_h
+        c_range = img_w
 
         # Width of extruded rib per hierarchy level
         rib_widths = {0: depth * 1.5, 1: depth * 0.9, 2: depth * 0.5}
@@ -632,16 +631,11 @@ def _apply_branching_to_wall(model, layer_idx, wall, extraction, depth=0.08, evo
         # ── Generative branching from branch_points / endpoints ──
         # Build organic tree structure instead of grid fallback
         if branch_points and len(branch_points) >= 2:
-            bp_arr = np.array(branch_points, dtype=float)
-            bp_min = bp_arr.min(axis=0)
-            bp_max = bp_arr.max(axis=0)
-            bp_range = np.maximum(bp_max - bp_min, 1)
-
-            # Normalize to wall coords
+            # Normalize to wall coords using the full source image.
             bp_norm = []
             for bp in branch_points:
-                uu = ((bp[1] - bp_min[1]) / bp_range[1]) * ww
-                vv = ((bp[0] - bp_min[0]) / bp_range[0]) * wh
+                uu = (bp[1] / img_w) * ww
+                vv = (bp[0] / img_h) * wh
                 bp_norm.append((uu, vv))
 
             # Connect with organic tree: find nearest-neighbor chain
@@ -777,6 +771,11 @@ def _draw_branch(model, layer_idx, o, u_dir, v_dir, n,
 def apply_pattern_to_wall(model, layer_idx, wall, extraction, category, depth=0.08,
                            evo=None):
     """Dispatch pattern application based on category, with optional evolution params."""
+    evo = dict(evo or {})
+    if "image_dimensions" not in evo:
+        dims = extraction.get("image_dimensions")
+        if dims:
+            evo["image_dimensions"] = dims
     if category == "cellular":
         # Pass hierarchical seeds if available, otherwise flat list
         seeds = extraction.get("seed_points_hierarchical", extraction.get("seed_points", []))
@@ -822,6 +821,10 @@ def _apply_spiral_to_wall(model, layer_idx, wall, extraction, evo=None):
 
     rng = np.random.default_rng(42 + int(t_floor * 1000))
 
+    img_dims = (evo or {}).get("image_dimensions") or extraction.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
+
     # ── Try traced paths first (faithful to source image) ──
     lod_cap = _lod_cap_for_wall(ww, wh, MAX_PATHS)
     paths = extraction.get("paths", [])[:lod_cap]
@@ -833,11 +836,11 @@ def _apply_spiral_to_wall(model, layer_idx, wall, extraction, evo=None):
             pts = p["points"] if isinstance(p, dict) else p
             all_pts.extend(pts)
         if all_pts:
-            all_arr = np.array(all_pts, dtype=float)
-            r_min, c_min = all_arr.min(axis=0)
-            r_max, c_max = all_arr.max(axis=0)
-            r_range = max(r_max - r_min, 1)
-            c_range = max(c_max - c_min, 1)
+            # Normalize by the source image so the spiral's position and scale
+            # on the wall matches the trace, rather than stretching the path bbox.
+            r_min, c_min = 0.0, 0.0
+            r_range = img_h
+            c_range = img_w
 
             for path_data in paths:
                 if isinstance(path_data, dict):

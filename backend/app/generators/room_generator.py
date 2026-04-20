@@ -142,12 +142,16 @@ def _generate_voronoi_rooms(model, wall_layer, floor_layer, corridor_layer,
 
     rng = np.random.default_rng(42 + int(z * 100))
 
-    # Generate seed points for rooms
+    # Generate seed points for rooms — normalize by the source image so the
+    # room layout keeps the relative clustering of the original pattern.
+    img_dims = extraction.get("image_dimensions") or [1, 1]
+    img_w = float(max(img_dims[0], 1))
+    img_h = float(max(img_dims[1], 1))
     seed_points = extraction.get("seed_points", [])
     if seed_points and len(seed_points) >= 3:
-        pts = np.array(seed_points, dtype=float)
-        pts[:, 0] = (pts[:, 0] / max(pts[:, 0].max(), 1)) * fw + ox
-        pts[:, 1] = (pts[:, 1] / max(pts[:, 1].max(), 1)) * fd + oy
+        pts = np.array(seed_points, dtype=float)[:, :2]
+        pts[:, 0] = pts[:, 0] / img_w * fw + ox
+        pts[:, 1] = pts[:, 1] / img_h * fd + oy
         # Resample to match room_count
         if len(pts) > room_count:
             indices = rng.choice(len(pts), room_count, replace=False)

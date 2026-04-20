@@ -39,7 +39,7 @@ VARIATION_CONFIGS = [
                                "label": "Column Spacing (m)"},
             "beam_depth": {"min": 0.2, "max": 1.0, "default": 0.4, "step": 0.05,
                            "label": "Beam Depth (m)"},
-            "pattern_influence": {"min": 0.0, "max": 1.0, "default": 0.7, "step": 0.05,
+            "pattern_influence": {"min": 0.0, "max": 1.0, "default": 1.0, "step": 0.05,
                                   "label": "Pattern Influence"},
         },
     },
