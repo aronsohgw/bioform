@@ -280,7 +280,7 @@ def build_presentation():
 
     vision_points = [
         "No coding required \u2014 visual selection replaces scripting",
-        "Runs locally \u2014 no cloud costs, no data leaving the machine",
+        "Runs locally or free on the web at bioform.vercel.app",
         "Industry-standard output \u2014 .3dm + .ghx, ready for Rhino 8",
         "Three design variations from a single image",
         "Progressive detail \u2014 patterns evolve from ground to roof",
@@ -502,7 +502,7 @@ def build_presentation():
             "rhino3dm \u2014 .3dm file generation",
             "Programmatic XML \u2014 .ghx templates",
             "SSE streaming \u2014 Real-time progress",
-            "Ollama (optional) \u2014 LLM classification",
+            "Ollama \u2014 optional local LLM (disabled in cloud build)",
         ],
     )
 
@@ -527,6 +527,8 @@ def build_presentation():
         ("Phase 4", "Performance \u2014 server-side caching, feature caps, 50% faster extraction"),
         ("Phase 5", "Polish \u2014 timeouts, cancel buttons, curve smoothing"),
         ("Phase 6", "Stability \u2014 critical bug fixes, layer persistence, report generation"),
+        ("Phase 7", "Cloud deployment \u2014 Vercel + Render on free tiers, guarded upload flow"),
+        ("Phase 8", "Pattern fidelity \u2014 image-dim normalisation so 3D follows the trace"),
     ]
     for i, (phase, desc) in enumerate(milestones):
         y = Inches(1.7 + i * 0.85)
@@ -634,12 +636,12 @@ def build_presentation():
 
     future = [
         "End-to-end integration testing",
-        "Deployment \u2014 Vercel (frontend) + Railway/Fly (backend)",
         "Additional biomimicry categories (fractal, tessellation)",
         "Multi-building site layouts",
         "Material and colour mapping from source image",
         "User documentation and onboarding guide",
         "Export to additional formats (IFC, FBX)",
+        "Paid tier deployment to remove cold-start delay (~40 s) on free Render",
     ]
     _add_multiline_box(slide, Inches(0.8), Inches(1.8), Inches(11), Inches(4.5),
                        future, FONT_BODY, Pt(18), TEXT_WHITE, Pt(28), bullet=True)

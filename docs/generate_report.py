@@ -405,7 +405,7 @@ def build_report():
             ["3D Preview", "Three.js + rhino3dm.js", "In-browser .3dm parsing and rendering"],
             ["Backend", "Python 3.11 / FastAPI", "API endpoints, generation orchestration"],
             ["CV Analysis", "OpenCV + scikit-image", "6 biomimicry pattern extractors"],
-            ["LLM (optional)", "Ollama + LLaMA 3.2 Vision 11B", "Image classification (available, not in main flow)"],
+            ["LLM (local-only)", "Ollama + LLaMA 3.2 Vision 11B", "Optional local classification; disabled in cloud build"],
             ["3D Generation", "rhino3dm (Python)", "Parametric .3dm file creation"],
             ["Grasshopper", "Programmatic XML", ".ghx definition generation"],
             ["Streaming", "Server-Sent Events (SSE)", "Real-time progress updates"],
@@ -414,9 +414,11 @@ def build_report():
     )
 
     doc.add_paragraph(
-        "The entire stack runs locally. No cloud services or paid APIs are required "
-        "for core functionality. The optional Unsplash integration (image search) uses "
-        "a free API key."
+        "The stack runs locally for development and has also been deployed to a free-tier "
+        "cloud environment (frontend on Vercel, backend on Render) for public access at "
+        "https://bioform.vercel.app. The cloud build omits the optional local LLM so no "
+        "paid AI services are required. The optional Unsplash integration (image search) "
+        "uses a free API key."
     )
 
     # ═══════════════════════════════════════════════
@@ -524,6 +526,18 @@ def build_report():
          "Fixed NameError where /api/generate referenced undefined \u2018classification\u2019 on "
          "the fast path. Lifted layer visibility state to App.jsx for persistence "
          "across variation switches and regenerations."),
+        ("20 Apr 2026 \u2014 Session 12", "Cloud Deployment",
+         "Deployed BioForm to public URLs: frontend on Vercel (bioform.vercel.app), "
+         "backend on Render. Switched to CV-only classification path for the cloud build "
+         "(Ollama remains available for local use). Introduced a guarded upload-to-live "
+         "workflow (tests + frontend build + git push) so non-developer edits stay safe."),
+        ("21 Apr 2026 \u2014 Session 13", "Pattern Fidelity Fix",
+         "3D output was too linear / appeared random because pattern features were "
+         "normalised by per-feature max rather than source-image dimensions, stretching "
+         "clustered features to fill each wall. Threaded image_dimensions through the "
+         "pipeline so spatial relationships are preserved. Raised structural pattern "
+         "influence default from 0.7 to 1.0, removed the beam max-span cap, and added "
+         "shell + spiral cases to the column-position extractor."),
     ]
 
     for date, title, desc in timeline:
@@ -553,7 +567,10 @@ def build_report():
         "SSE progress streaming with cancel button on all long operations",
         "Server-side trace caching (no large data round-trips to frontend)",
         "Automated project report generation",
-        "89/89 backend tests passing",
+        "Public cloud deployment on free tiers (Vercel + Render) at bioform.vercel.app",
+        "Guarded non-developer deploy workflow (upload-to-live.bat) with test + build gates",
+        "Pattern-fidelity fix: 3D output now preserves spatial relationships from the trace",
+        "93/93 backend tests passing",
     ]
     for item in completed:
         doc.add_paragraph(item, style="List Bullet")
@@ -562,7 +579,6 @@ def build_report():
     remaining = [
         "End-to-end integration testing (frontend \u2192 backend \u2192 file output)",
         "Error handling for edge cases (corrupt images, empty extractions)",
-        "Deployment pipeline (Vercel for frontend, Railway/Fly for backend)",
         "User documentation and onboarding guide",
         "Additional biomimicry categories (fractal, tessellation)",
         "Multi-building site layouts",
